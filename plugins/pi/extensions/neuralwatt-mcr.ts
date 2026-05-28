@@ -430,6 +430,7 @@ export default function (pi: ExtensionAPI) {
       });
       state.totalEnergyJoules += energy.energy_joules;
       state.lastEnergy = energy;
+      pi.appendEntry("neuralwatt-energy", { energy_joules: energy.energy_joules });
       if (energy.mcr) {
         state.sessionTurns = energy.mcr.session_turns;
         state.contextTokens = energy.mcr.context_tokens;
@@ -628,6 +629,37 @@ export default function (pi: ExtensionAPI) {
     uuidFallback = null;
     ctx.ui.setStatus(MCR_STATUS_KEY, "");
     ctx.ui.setStatus(ENERGY_STATUS_KEY, "");
+  });
+
+  pi.on("session_tree", async (_event, ctx) => {
+    // Branch navigation invalidates MCR session state — sessionFp and
+    // safeDropBefore are tied to a specific message sequence that no
+    // longer matches the new branch. Clear everything and let the
+    // next server response repopulate. Energy is replayed from the
+    // session log (same as the main provider's session_tree handler).
+    state.sessionFp = null;
+    state.safeDropBefore = 0;
+    state.storedThrough = 0;
+    state.totalEnergyJoules = 0;
+    state.sessionTurns = 0;
+    state.contextTokens = 0;
+    state.lastMcrMeta = null;
+    state.lastEnergy = null;
+
+    // Replay energy events from the session log for the new branch.
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (
+        entry.type === "custom" &&
+        entry.customType === "neuralwatt-energy" &&
+        typeof entry.data === "object" &&
+        entry.data
+      ) {
+        state.totalEnergyJoules += (entry.data as { energy_joules: number }).energy_joules || 0;
+      }
+    }
+
+    nwlog("session_tree", { total_energy_replayed: state.totalEnergyJoules });
+    updateStatusBar(ctx);
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
