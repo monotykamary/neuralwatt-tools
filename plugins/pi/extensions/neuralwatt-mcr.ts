@@ -666,10 +666,6 @@ export default function (pi: ExtensionAPI) {
     const modelId = ctx.model?.id || "";
     const numMsgs = event.messages.length;
 
-    // Check MCR model FIRST — non-MCR models never participate in
-    // server-side compaction and should be invisible to this extension.
-    if (!isMCRModel(modelId)) return;
-
     if (!state.sessionFp) {
       nwlog("context_skip", {
         reason: "no_session_fp",
@@ -685,6 +681,14 @@ export default function (pi: ExtensionAPI) {
         num_msgs: numMsgs,
         safe_drop_before: state.safeDropBefore,
         session_fp: state.sessionFp,
+      });
+      return;
+    }
+    if (!isMCRModel(modelId)) {
+      nwlog("context_skip", {
+        reason: "not_mcr_model",
+        model: modelId,
+        num_msgs: numMsgs,
       });
       return;
     }
